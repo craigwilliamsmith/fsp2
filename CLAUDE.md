@@ -13,10 +13,12 @@ A web application that allows users to create and manage soccer leagues. Users c
 - **Framework**: React Router v7 (framework mode), TypeScript
 - **Rendering**: SSR + CSR (server and client side rendering)
 - **Styling**: TailwindCSS, Shadcn/ui
+- **State**: React local state for UI; Zustand for shared client state
 - **ORM**: Prisma
 - **Database**: PostgreSQL via Docker (see Environment Configuration)
-- **Auth**: Auth.js v5 (`@auth/react-router`)
+- **Auth**: Auth.js v5 (`next-auth@5`)
 - **Testing**: Vitest
+- **Node**: v20+
 
 ---
 
@@ -49,6 +51,9 @@ npx prisma migrate dev     # create and apply a migration
 npx prisma migrate deploy  # apply migrations in production
 npx prisma studio          # open Prisma Studio
 npx prisma generate        # regenerate Prisma client after schema changes
+
+# Shadcn/ui — add a component
+npx shadcn add <component>
 ```
 
 ---
@@ -80,7 +85,7 @@ AUTH_GOOGLE_SECRET=<your-google-client-secret>
 
 ## Authentication
 
-- Library: **Auth.js v5** (`@auth/react-router`)
+- Library: **Auth.js v5** (`next-auth@5`)
 - Providers: Google
 - Session strategy: `database` (JWT not used)
 - DB adapter: `@auth/prisma-adapter`
@@ -96,6 +101,9 @@ React Router v7 framework mode — single app handles both server and client ren
 
 - **Loaders**: fetch data server-side per route (`loader` functions in route files). Always run on the server — safe to use Prisma directly.
 - **Actions**: handle form submissions and mutations server-side (`action` functions in route files). Always run on the server.
+- **clientLoader / clientAction**: use only when data must be fetched or mutated purely on the client (e.g. localStorage). Avoid for anything involving the DB.
+- **Forms**: use React Router's `<Form>` component for submissions that trigger an `action`. Use `useFetcher` for mutations that should not cause navigation (e.g. deleting an item inline).
+- **Pending state**: use `useNavigation` for full-page transitions; use `fetcher.state` for inline/fetcher mutations.
 - **Client components**: interactive UI. Use `useLoaderData()` to consume server-fetched data.
 - **ORM**: Prisma manages all DB access. Schema lives in `prisma/schema.prisma`. Always run `prisma generate` after schema changes.
 - **Type sharing**: Prisma-generated types are the source of truth. Shared utility types live in `app/types/`.
@@ -129,6 +137,15 @@ app/
 └── types/
     └── index.ts                   # Shared utility types
 ```
+
+---
+
+## Prisma Schema Conventions
+
+- Use `cuid()` for all IDs: `id String @id @default(cuid())`
+- Field names in schema are `camelCase`; Prisma maps these to `snake_case` columns automatically — no `@map` needed unless overriding
+- Always add `createdAt DateTime @default(now())` and `updatedAt DateTime @updatedAt` to every model
+- Define relations explicitly with `@relation` to avoid ambiguity
 
 ---
 
@@ -269,6 +286,15 @@ Standard football tiebreakers: Pts → GD → GF → Name. Head-to-head can be a
 
 ## Notes for Claude
 
+- **Protected route pattern** — every loader that requires auth should start with:
+  ```ts
+  const session = await auth.api.getSession(request)
+  if (!session) return redirect('/login')
+  ```
+- **Action error pattern** — return errors from actions as data, don't throw:
+  ```ts
+  return { error: 'Score is required' }  // not: throw new Error(...)
+  ```
 - `tableCalculator.ts` is the core logic — keep it pure and well-tested
 - League table sorting must be strict; use a multi-key sort
 - Form guide should show the most recent 5 matches in chronological order (latest on right)
